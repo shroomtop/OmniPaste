@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Shroomtop420® OmniPaste v4 — HTML Deployer</title>
+  <style>
+    body {
+      background: #000; color: #0ff; font-family: monospace;
+      margin: 0; padding: 0; display: flex; flex-direction: column; align-items: center;
+    }
+    textarea, input, button {
+      font-family: monospace; font-size: 14px;
+    }
+    textarea {
+      width: 90vw; height: 200px; margin: 10px; background: #111; color: #0f0; border: 1px solid #0ff;
+    }
+    input, button {
+      margin: 5px; padding: 10px; border: none; border-radius: 5px;
+    }
+    button {
+      background: #00ffee; color: #000; font-weight: bold;
+    }
+    #previewFrame {
+      width: 100%; height: 300px; border: none; background: #111;
+    }
+    #dropzone {
+      border: 2px dashed #0ff; padding: 20px; margin: 10px; width: 90%;
+      text-align: center; color: #0ff;
+    }
+    .row { display: flex; flex-wrap: wrap; justify-content: center; }
+  </style>
+</head>
+<body>
+  <h2>Shroomtop420® OmniPaste v4 — HTML Live Deployer</h2>
+
+  <div id="dropzone">Drag & drop an HTML file here</div>
+  <textarea id="htmlInput" placeholder="Paste full HTML including <!DOCTYPE html>..."></textarea>
+
+  <div class="row">
+    <input id="repo" placeholder="GitHub Repo Name (e.g., my-tool)">
+    <input id="user" placeholder="GitHub Username (e.g., shroomtop)">
+    <input id="token" placeholder="Paste GitHub Token">
+    <label><input type="checkbox" id="isPrivate"> Private Repo</label>
+  </div>
+
+  <div class="row">
+    <button onclick="saveToken()">Save Token</button>
+    <button onclick="previewHTML()">Preview</button>
+    <button onclick="pushToGitHub()">Push to GitHub</button>
+    <button onclick="createGist()">→ Gist</button>
+  </div>
+
+  <iframe id="previewFrame"></iframe>
+  <pre id="log" style="color:#0f0; font-size: 12px;"></pre>
+
+  <script>
+    // Drag-and-drop
+    document.getElementById('dropzone').addEventListener('dragover', e => {
+      e.preventDefault(); e.dataTransfer.dropEffect = 'copy';
+    });
+    document.getElementById('dropzone').addEventListener('drop', async e => {
+      e.preventDefault();
+      const file = e.dataTransfer.files[0];
+      const text = await file.text();
+      document.getElementById('htmlInput').value = text;
+      log("Loaded: " + file.name);
+    });
+
+    function log(msg) {
+      document.getElementById('log').textContent += msg + "\n";
+    }
+
+    function saveToken() {
+      const t = document.getElementById('token').value;
+      if (t) {
+        localStorage.setItem('gh_token', btoa(t));
+        log("✓ Token saved securely.");
+      }
+    }
+
+    function previewHTML() {
+      const html = document.getElementById('htmlInput').value;
+      const blob = new Blob([html], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      document.getElementById('previewFrame').src = url;
+    }
+
+    async function pushToGitHub() {
+      const html = document.getElementById('htmlInput').value;
+      const repo = document.getElementById('repo').value;
+      const user = document.getElementById('user').value;
+      const token = atob(localStorage.getItem('gh_token') || '');
+      const isPrivate = document.getElementById('isPrivate').checked;
+      if (!repo || !user || !token || !html) return alert('Missing required fields.');
+
+      const repoRes = await fetch(`https://api.github.com/user/repos`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `token ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ name: repo, private: isPrivate })
+      });
+
+      const repoJson = await repoRes.json();
+      if (repoJson.message && repoJson.message.includes("name already exists")) {
+        log("[~] Repo exists. Continuing...");
+      } else {
+        log("[✓] Repo created.");
+      }
+
+      const commitUrl = `https://api.github.com/repos/${user}/${repo}/contents/index.html`;
+      const encoded = btoa(unescape(encodeURIComponent(html)));
+
+      const commitRes = await fetch(commitUrl, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `token ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          message: "OmniPaste commit",
+          content: encoded
+        })
+      });
+
+      if (commitRes.ok) {
+        const ghPagesRes = await fetch(`https://api.github.com/repos/${user}/${repo}/pages`, {
+          method: 'POST',
+          headers: { 'Authorization': `token ${token}` },
+          body: JSON.stringify({ source: { branch: "main", path: "/" } })
+        });
+        log(`[✓] Live at: https://${user}.github.io/${repo}/`);
+      } else {
+        log("[X] Push failed.");
+      }
+    }
+
+    async function createGist() {
+      const html = document.getElementById('htmlInput').value;
+      const token = atob(localStorage.getItem('gh_token') || '');
+      if (!html || !token) return alert("Missing HTML or token");
+
+      const res = await fetch('https://api.github.com/gists', {
+        method: 'POST',
+        headers: {
+          'Authorization': `token ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          description: "OmniPaste HTML Gist",
+          public: true,
+          files: { "index.html": { content: html } }
+        })
+      });
+
+      const json = await res.json();
+      if (json.html_url) {
+        log("✓ Gist created: " + json.html_url);
+        window.open(json.html_url, '_blank');
+      } else {
+        log("✗ Gist creation failed.");
+      }
+    }
+
+    // Load token
+    (function () {
+      const t = localStorage.getItem('gh_token');
+      if (t) document.getElementById('token').value = atob(t);
+    })();
+  </script>
+</body>
+</html>

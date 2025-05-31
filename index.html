@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Shroomtop420® OmniPaste v4 — HTML Deployer</title>
+  <title>OmniPaste v4.1 — GitHub Deployer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     body {
       background: #000; color: #0ff; font-family: monospace;
@@ -18,7 +19,7 @@
       margin: 5px; padding: 10px; border: none; border-radius: 5px;
     }
     button {
-      background: #00ffee; color: #000; font-weight: bold;
+      background: #00ffee; color: #000; font-weight: bold; cursor: pointer;
     }
     #previewFrame {
       width: 100%; height: 300px; border: none; background: #111;
@@ -27,20 +28,25 @@
       border: 2px dashed #0ff; padding: 20px; margin: 10px; width: 90%;
       text-align: center; color: #0ff;
     }
-    .row { display: flex; flex-wrap: wrap; justify-content: center; }
+    .row {
+      display: flex; flex-wrap: wrap; justify-content: center; gap: 10px;
+    }
+    .log-success { color: #0f0; }
+    .log-error { color: #f00; }
+    .log-info { color: #0ff; }
   </style>
 </head>
 <body>
-  <h2>Shroomtop420® OmniPaste v4 — HTML Live Deployer</h2>
+  <h2>OmniPaste v4.1 — GitHub HTML Deployer</h2>
 
   <div id="dropzone">Drag & drop an HTML file here</div>
   <textarea id="htmlInput" placeholder="Paste full HTML including <!DOCTYPE html>..."></textarea>
 
   <div class="row">
-    <input id="repo" placeholder="GitHub Repo Name (e.g., my-tool)">
-    <input id="user" placeholder="GitHub Username (e.g., shroomtop)">
-    <input id="token" placeholder="Paste GitHub Token">
-    <label><input type="checkbox" id="isPrivate"> Private Repo</label>
+    <input id="repo" placeholder="Repo Name (e.g., my-tool)">
+    <input id="user" placeholder="GitHub Username">
+    <input id="token" placeholder="GitHub Token">
+    <label><input type="checkbox" id="isPrivate"> Private</label>
   </div>
 
   <div class="row">
@@ -51,9 +57,17 @@
   </div>
 
   <iframe id="previewFrame"></iframe>
-  <pre id="log" style="color:#0f0; font-size: 12px;"></pre>
+  <pre id="log" style="font-size: 12px;"></pre>
 
   <script>
+    const log = (msg, type = "info") => {
+      const el = document.getElementById('log');
+      const span = document.createElement('span');
+      span.className = `log-${type}`;
+      span.textContent = msg + "\n";
+      el.appendChild(span);
+    };
+
     // Drag-and-drop
     document.getElementById('dropzone').addEventListener('dragover', e => {
       e.preventDefault(); e.dataTransfer.dropEffect = 'copy';
@@ -63,18 +77,14 @@
       const file = e.dataTransfer.files[0];
       const text = await file.text();
       document.getElementById('htmlInput').value = text;
-      log("Loaded: " + file.name);
+      log("✓ Loaded: " + file.name, "success");
     });
-
-    function log(msg) {
-      document.getElementById('log').textContent += msg + "\n";
-    }
 
     function saveToken() {
       const t = document.getElementById('token').value;
       if (t) {
         localStorage.setItem('gh_token', btoa(t));
-        log("✓ Token saved securely.");
+        log("✓ Token saved", "success");
       }
     }
 
@@ -83,6 +93,7 @@
       const blob = new Blob([html], { type: 'text/html' });
       const url = URL.createObjectURL(blob);
       document.getElementById('previewFrame').src = url;
+      log("✓ Preview updated", "success");
     }
 
     async function pushToGitHub() {
@@ -91,24 +102,29 @@
       const user = document.getElementById('user').value;
       const token = atob(localStorage.getItem('gh_token') || '');
       const isPrivate = document.getElementById('isPrivate').checked;
+
       if (!repo || !user || !token || !html) return alert('Missing required fields.');
 
+      log("→ Creating or verifying repo…");
       const repoRes = await fetch(`https://api.github.com/user/repos`, {
         method: 'POST',
         headers: {
           'Authorization': `token ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ name: repo, private: isPrivate })
+        body: JSON.stringify({ name: repo, private: isPrivate, auto_init: true })
       });
-
       const repoJson = await repoRes.json();
       if (repoJson.message && repoJson.message.includes("name already exists")) {
-        log("[~] Repo exists. Continuing...");
+        log("[~] Repo exists. Proceeding…", "info");
+      } else if (repoJson.id) {
+        log("✓ Repo created.", "success");
       } else {
-        log("[✓] Repo created.");
+        log("✗ Repo creation failed: " + (repoJson.message || "Unknown error"), "error");
+        return;
       }
 
+      log("→ Committing index.html...");
       const commitUrl = `https://api.github.com/repos/${user}/${repo}/contents/index.html`;
       const encoded = btoa(unescape(encodeURIComponent(html)));
 
@@ -124,15 +140,31 @@
         })
       });
 
+      const commitJson = await commitRes.json();
       if (commitRes.ok) {
-        const ghPagesRes = await fetch(`https://api.github.com/repos/${user}/${repo}/pages`, {
-          method: 'POST',
-          headers: { 'Authorization': `token ${token}` },
-          body: JSON.stringify({ source: { branch: "main", path: "/" } })
-        });
-        log(`[✓] Live at: https://${user}.github.io/${repo}/`);
+        log("✓ index.html pushed", "success");
       } else {
-        log("[X] Push failed.");
+        log("✗ Push failed: " + (commitJson.message || "Unknown error"), "error");
+        return;
+      }
+
+      log("→ Enabling GitHub Pages...");
+      const pagesRes = await fetch(`https://api.github.com/repos/${user}/${repo}/pages`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `token ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ source: { branch: "main", path: "/" } })
+      });
+
+      const pagesJson = await pagesRes.json();
+      if (pagesRes.ok || pagesJson.status === "built") {
+        const url = `https://${user}.github.io/${repo}/`;
+        log(`✓ Live at: ${url}`, "success");
+        navigator.clipboard.writeText(url);
+      } else {
+        log("✗ Pages enable failed: " + (pagesJson.message || "Unknown error"), "error");
       }
     }
 
@@ -156,15 +188,16 @@
 
       const json = await res.json();
       if (json.html_url) {
-        log("✓ Gist created: " + json.html_url);
+        log("✓ Gist: " + json.html_url, "success");
+        navigator.clipboard.writeText(json.html_url);
         window.open(json.html_url, '_blank');
       } else {
-        log("✗ Gist creation failed.");
+        log("✗ Gist creation failed.", "error");
       }
     }
 
     // Load token
-    (function () {
+    (() => {
       const t = localStorage.getItem('gh_token');
       if (t) document.getElementById('token').value = atob(t);
     })();

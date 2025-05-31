@@ -2,42 +2,25 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>OmniPaste v4.1 — GitHub Deployer</title>
+  <title>OmniPaste v4.2 — GitHub Deployer (Legal DNA, Baxter MN)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    body {
-      background: #000; color: #0ff; font-family: monospace;
-      margin: 0; padding: 0; display: flex; flex-direction: column; align-items: center;
-    }
-    textarea, input, button {
-      font-family: monospace; font-size: 14px;
-    }
-    textarea {
-      width: 90vw; height: 200px; margin: 10px; background: #111; color: #0f0; border: 1px solid #0ff;
-    }
-    input, button {
-      margin: 5px; padding: 10px; border: none; border-radius: 5px;
-    }
-    button {
-      background: #00ffee; color: #000; font-weight: bold; cursor: pointer;
-    }
-    #previewFrame {
-      width: 100%; height: 300px; border: none; background: #111;
-    }
-    #dropzone {
-      border: 2px dashed #0ff; padding: 20px; margin: 10px; width: 90%;
-      text-align: center; color: #0ff;
-    }
-    .row {
-      display: flex; flex-wrap: wrap; justify-content: center; gap: 10px;
-    }
-    .log-success { color: #0f0; }
-    .log-error { color: #f00; }
-    .log-info { color: #0ff; }
+    body { background:#000; color:#0ff; font-family:monospace; margin:0; padding:0; display:flex; flex-direction:column; align-items:center;}
+    textarea, input, button { font-family:monospace; font-size:14px; }
+    textarea { width:90vw; height:200px; margin:10px; background:#111; color:#0f0; border:1px solid #0ff; }
+    input, button { margin:5px; padding:10px; border:none; border-radius:5px; }
+    button { background:#00ffee; color:#000; font-weight:bold; cursor:pointer; }
+    #previewFrame { width:100%; height:300px; border:none; background:#111;}
+    #dropzone { border:2px dashed #0ff; padding:20px; margin:10px; width:90%; text-align:center; color:#0ff;}
+    .row { display:flex; flex-wrap:wrap; justify-content:center; gap:10px;}
+    .log-success{color:#0f0;} .log-error{color:#f00;} .log-info{color:#0ff;}
+    #legal-consent-modal {position:fixed;top:0;left:0;width:100vw;height:100vh;background:#222b;z-index:9999;display:flex;align-items:center;justify-content:center;}
+    #legal-consent-content {background:#fff;padding:2em;border-radius:1em;max-width:500px;text-align:center;}
+    #legal-consent-content a {color:#06c;text-decoration:underline;}
   </style>
 </head>
 <body>
-  <h2>OmniPaste v4.1 — GitHub HTML Deployer</h2>
+  <h2>OmniPaste v4.2 — GitHub HTML Deployer</h2>
 
   <div id="dropzone">Drag & drop an HTML file here</div>
   <textarea id="htmlInput" placeholder="Paste full HTML including <!DOCTYPE html>..."></textarea>
@@ -57,9 +40,46 @@
   </div>
 
   <iframe id="previewFrame"></iframe>
-  <pre id="log" style="font-size: 12px;"></pre>
+  <pre id="log" style="font-size:12px;"></pre>
+
+  <!-- LEGAL CONSENT MODAL -->
+  <div id="legal-consent-modal" style="display:none;">
+    <div id="legal-consent-content">
+      <h2>Terms of Service & Privacy Policy</h2>
+      <p>
+        You must agree to the
+        <a href="https://shroomtop420.com/tos" target="_blank">Terms of Service</a> and
+        <a href="https://shroomtop420.com/privacy" target="_blank">Privacy Policy</a><br>
+        governed by the laws of Baxter, MN and the United States.<br>
+        If located in EU/CA/BR, additional rights apply.
+      </p>
+      <button id="consentBtn" style="background:#36c;padding:1em 2em;border:none;border-radius:0.5em;color:#fff;font-size:1.2em;cursor:pointer;">I Agree</button>
+    </div>
+  </div>
 
   <script>
+    // === LEGAL DNA MODULES ===
+    const LEGAL_DNA = {
+      jurisdiction: "US/MN/Baxter",
+      export_tag: "EAR99",
+      spdx: "MIT",
+      artifact_time: Date.now(),
+      def_pub: "OIN",
+      consent_req: true,
+      city: "Baxter"
+    };
+
+    // Consent overlay logic
+    function showLegalConsent() {
+      document.getElementById("legal-consent-modal").style.display = "flex";
+      document.getElementById("consentBtn").onclick = function() {
+        localStorage.setItem("legal_consent_v1", Date.now());
+        // Log consent locally; extend to server/audit as needed
+        document.getElementById("legal-consent-modal").style.display = "none";
+      }
+    }
+    if(!localStorage.getItem("legal_consent_v1")) showLegalConsent();
+
     const log = (msg, type = "info") => {
       const el = document.getElementById('log');
       const span = document.createElement('span');
@@ -88,16 +108,26 @@
       }
     }
 
+    // === LEGAL DNA INJECTION ===
+    function injectLegalDNA(html) {
+      const dna = "<!--LEGAL-DNA:" + JSON.stringify(LEGAL_DNA) + "-->\n";
+      // Only inject if not already present
+      return html.startsWith("<!--LEGAL-DNA:") ? html : dna + html;
+    }
+
     function previewHTML() {
-      const html = document.getElementById('htmlInput').value;
+      let html = document.getElementById('htmlInput').value;
+      html = injectLegalDNA(html);
       const blob = new Blob([html], { type: 'text/html' });
       const url = URL.createObjectURL(blob);
       document.getElementById('previewFrame').src = url;
-      log("✓ Preview updated", "success");
+      log("✓ Preview updated (Legal DNA injected)", "success");
     }
 
     async function pushToGitHub() {
-      const html = document.getElementById('htmlInput').value;
+      let html = document.getElementById('htmlInput').value;
+      html = injectLegalDNA(html);
+
       const repo = document.getElementById('repo').value;
       const user = document.getElementById('user').value;
       const token = atob(localStorage.getItem('gh_token') || '');
@@ -135,7 +165,7 @@
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          message: "OmniPaste commit",
+          message: "OmniPaste commit (Legal DNA)",
           content: encoded
         })
       });
@@ -169,7 +199,8 @@
     }
 
     async function createGist() {
-      const html = document.getElementById('htmlInput').value;
+      let html = document.getElementById('htmlInput').value;
+      html = injectLegalDNA(html);
       const token = atob(localStorage.getItem('gh_token') || '');
       if (!html || !token) return alert("Missing HTML or token");
 
@@ -180,7 +211,7 @@
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          description: "OmniPaste HTML Gist",
+          description: "OmniPaste HTML Gist (Legal DNA)",
           public: true,
           files: { "index.html": { content: html } }
         })
